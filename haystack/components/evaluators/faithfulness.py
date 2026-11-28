@@ -122,9 +122,9 @@ class FaithfulnessEvaluator(LLMEvaluator):
         :param progress_bar:
             Whether to show a progress bar during the evaluation.
         :param raise_on_failure:
-            If True, the component raises an exception when the chat generator call fails or its response isn't valid
-            JSON with the expected keys, or the numbers of statements and statement scores differ. If False, it logs
-            a warning, marks the result for that input as `error` with a NaN score, and excludes it from the mean.
+            If True, the component raises an exception when the chat generator call fails, its response isn't valid
+            JSON with the expected keys, or it doesn't return one numeric score of 0 or 1 per statement. If False,
+            it logs a warning, marks the input as `error` with a NaN score, and excludes it from the mean.
         :param chat_generator:
             a ChatGenerator instance which represents the LLM.
             In order for the component to work, the LLM should be configured to return a JSON object. For example,
@@ -215,28 +215,31 @@ class FaithfulnessEvaluator(LLMEvaluator):
 
         # calculate average statement faithfulness score per query
         for idx, res in enumerate(result["results"]):
-            if res is not None and len(res["statements"]) != len(res["statement_scores"]):
-                message = (
-                    "FaithfulnessEvaluator expected one score per statement, but received "
-                    f"{len(res['statements'])} statements and {len(res['statement_scores'])} scores."
-                )
+            if res is not None:
+                statements = res["statements"]
+                statement_scores = res["statement_scores"]
+                if len(statements) != len(statement_scores):
+                    message = (
+                        "FaithfulnessEvaluator expected one score per statement, but received "
+                        f"{len(statements)} statements and {len(statement_scores)} scores."
+                    )
+                elif any(isinstance(score, bool) or score not in (0, 1) for score in statement_scores):
+                    message = f"Input {idx}: each entry in statement_scores must be the number 0 or 1."
+                else:
+                    res["score"] = np_mean(statement_scores) if statements else 0
+                    res["status"] = "evaluated"
+                    continue
+
                 if self.raise_on_failure:
                     raise ValueError(message)
                 logger.warning("{error} Setting the result for this input to an error.", error=message)
-                res = None
-            if res is None:
-                result["results"][idx] = {
-                    "statements": [],
-                    "statement_scores": [],
-                    "score": float("nan"),
-                    "status": "error",
-                }
-                continue
-            res["status"] = "evaluated"
-            if not res["statements"]:
-                res["score"] = 0
-            else:
-                res["score"] = np_mean(res["statement_scores"])
+
+            result["results"][idx] = {
+                "statements": [],
+                "statement_scores": [],
+                "score": float("nan"),
+                "status": "error",
+            }
 
         # calculate average answer faithfulness score over all queries
         scores = [res["score"] for res in result["results"]]
