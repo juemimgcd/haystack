@@ -122,9 +122,10 @@ class FaithfulnessEvaluator(LLMEvaluator):
         :param progress_bar:
             Whether to show a progress bar during the evaluation.
         :param raise_on_failure:
-            If True, the component raises an exception when the chat generator call fails, its response isn't valid
-            JSON with the expected keys, or it doesn't return one numeric score of 0 or 1 per statement. If False,
-            it logs a warning, marks the input as `error` with a NaN score, and excludes it from the mean.
+            If True, the component raises an exception when the chat generator call fails or its response isn't valid
+            JSON with the expected keys. For list outputs, it also raises a `ValueError` if the statement and score
+            counts differ or any score is not the number 0 or 1. If False, it logs a warning for these failures,
+            marks the input as `error` with a NaN score, and excludes it from the mean.
         :param chat_generator:
             a ChatGenerator instance which represents the LLM.
             In order for the component to work, the LLM should be configured to return a JSON object. For example,
